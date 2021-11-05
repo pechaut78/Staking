@@ -1,3 +1,4 @@
-node_moduldes
+node_moduldes/
 client/node_moduldes
 .env
+node_modules
