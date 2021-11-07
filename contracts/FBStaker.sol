@@ -16,22 +16,26 @@ struct Bonus {
 }
 
 contract FBStaker {
-	FBMoney private _FrenchBorgTokenProvider;
 	uint256 _Rate = 1;
-	uint8 _Decimals;
-
 	mapping(address => mapping(address => Stake)) stakeList; // Liste des stakes en cours
 	mapping(address => Bonus) bonusList; // List des bonus par utilisateur
 	mapping(address => uint256) tokenPool; // List des tokens récupérés
+
+	uint8 _Decimals; // Decimals of our own Mondey
+	FBMoney private _FrenchBorgTokenProvider;
 
 	modifier notNull256(uint256 v) {
 		require(v != 0);
 		_;
 	}
 
+	event BomusRetrieved(address adr, uint256 amount);
+	event TokenStaked(address adr, IERC20 Tkn, uint256 amount);
+	event TokenUnstaked(address adr, IERC20 Tkn, uint256 amount);
+
 	constructor() {
-		_FrenchBorgTokenProvider = new FBMoney(1000);
-		_Decimals = _FrenchBorgTokenProvider.decimals();
+		_FrenchBorgTokenProvider = new FBMoney(1000); // Our home-made money
+		_Decimals = _FrenchBorgTokenProvider.decimals(); // saved to avoid calls
 	}
 
 	/**
@@ -41,6 +45,9 @@ contract FBStaker {
 		return _FrenchBorgTokenProvider.balanceOf(msg.sender);
 	}
 
+	/**
+	 * @dev debugging purpose: Returns the amount of money staked per token
+	 */
 	function getTokenStakedBalance(ERC20 Token)
 		external
 		view
@@ -74,12 +81,12 @@ contract FBStaker {
 	function getRate(Stake memory Stk) internal view returns (uint256) {
 		require(block.number > Stk.dateOfValue, "invalid block number");
 		// _Rate vaut 1, parité avec ethereum
-		// 152470 = 30 * 24 * 60 * 60 / 17
+		// 199385 = 30j * 24h * 60mn * 60s / 13blk
 		// return Delta Block * Taux par mois / BlockParMois
 		return
 			uint256(
 				((uint256(block.number - Stk.dateOfValue) * _Rate) /
-					uint256(152470))
+					uint256(199384))
 			);
 	}
 
@@ -121,22 +128,41 @@ contract FBStaker {
 	}
 
 	/**
-	 * @dev Internal function for evaluating and retrieving Bonuses
+	 * @dev Internal function for evaluating and aggregating Bonuses
+	 * @param customer for which customer ?
 	 * @param Stk Current stake for customers
 	 * @param Aggregator used for getting Token value
 	 */
-	function retrieveBonus(address Aggregator, Stake memory Stk) internal {
+	function aggregateBonus(
+		address customer,
+		address Aggregator,
+		Stake memory Stk
+	) internal {
+		// evaluate new potential bonus
 		int256 bonus = computeBonus(Stk, Aggregator);
-		if (bonus < 0) bonus = 0;
 
 		// Remember we are retrieving, for next evaluation
-		bonusList[msg.sender].dateOfValue = block.number;
+		bonusList[customer].dateOfValue = block.number;
 		Stk.dateOfValue = block.number;
+
+		if (bonus > 0) bonusList[customer].amount += uint256(bonus);
+	}
+
+	function retrieveBonus(
+		address customer,
+		IERC20 Token,
+		address Aggregator
+	) public {
+		Stake memory Stk = stakeList[customer][address(Token)];
+		// Avant de récupérer le bonus, on le recalcul
+		aggregateBonus(customer, Aggregator, Stk);
+		uint256 bonus = bonusList[customer].amount;
 
 		// Transfer Bonuses to customer
 		if (bonus != 0) {
-			bonusList[msg.sender].amount += uint256(bonus);
-			_FrenchBorgTokenProvider.transfer(msg.sender, uint256(bonus));
+			bonusList[customer].amount += bonus;
+			emit BomusRetrieved(customer, bonus);
+			_FrenchBorgTokenProvider.transferFrom(msg.sender, customer, bonus);
 		}
 	}
 
@@ -158,10 +184,12 @@ contract FBStaker {
 
 		// On mémorise la quantité par token, pour utilisation eventuelle
 		tokenPool[address(Token)] += amount;
+		emit TokenStaked(msg.sender, Token, amount);
 
 		// Compute and transfer Bonus
 		//Le stake n'est peut etre pas vide, aussi on doit d'abord mettre a jour les bonuses
-		retrieveBonus(Aggregator, Stk);
+		aggregateBonus(msg.sender, Aggregator, Stk);
+		// Met à jour maintenant, apres avoir aggrégé, la balance de tokens
 		stakeList[msg.sender][address(Token)].amount += amount;
 		// Transfer the tokens, supposing the approve has been done
 		Token.transferFrom(msg.sender, address(this), amount);
@@ -169,26 +197,31 @@ contract FBStaker {
 
 	/**
 	 * @dev Unstake the staked tokens
+	 * @param Customer Customer's address
 	 * @param Token customer's Token
 	 * @param amount amount of customer's token to Stake
 	 * @param Aggregator Provided by JS for the correct PAIR
 	 */
 	function UnstakeTokens(
+		address Customer,
 		IERC20 Token,
 		uint256 amount,
 		address Aggregator
 	) external notNull256(amount) {
 		require(address(Token) != address(0));
 		require(address(Aggregator) != address(0));
+		require(address(Customer) != address(0));
 
 		// Trouve la reference du client
-		Stake memory Stk = stakeList[msg.sender][address(Token)];
+		Stake memory Stk = stakeList[Customer][address(Token)];
 		// On essai de retirer de trop ?
 		require(Stk.amount >= amount, "amount too high");
+		// Compute and aggregate Bonus
+		aggregateBonus(Customer, Aggregator, Stk);
 
-		// Compute and transfer Bonus
-		retrieveBonus(Aggregator, Stk);
 		Stk.amount -= amount;
-		Token.transferFrom(address(this), msg.sender, amount);
+		emit TokenUnstaked(Customer, Token, amount);
+
+		Token.transfer(Customer, amount);
 	}
 }

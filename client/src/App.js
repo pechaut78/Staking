@@ -8,14 +8,26 @@ import { web3 } from "@openzeppelin/test-helpers/src/setup";
 
 const BN = require('bn.js');
 
-const sourceAccount = "0xBB26426dF6574c8910810e0a2580f39e82CfC3e3"
-const destinationAccount = "0x696A27eccAFE7Ad2eBcD1E985521b7391390E224"
 
+const customerAccount = "0xFD7c7aa42EF7EFAf544B783549677b2fC20C3Ee9" // Customer
+const FrenchBorg = "0x696A27eccAFE7Ad2eBcD1E985521b7391390E224" // Owner of the contract
+
+function openModal(refer) {
+
+}
+function closeModal(refer) {
+
+}
 
 class App extends Component {
   state = { storageValue: 0, web3: null, accounts: null, dai: null, fbstaker: null, daiBalance: 0, stakedBalance: 0, aggregator: 0, bonus: "", moneyBalance: "" };
 
+
   componentDidMount = async () => {
+    var initModal = document.getElementById('initModal')
+    this._operationModal = document.getElementById('waitingOperation')
+    openModal(initModal)
+
     try {
       // Get network provider and web3 instance.
       const web3 = await getWeb3();
@@ -43,11 +55,13 @@ class App extends Component {
       // example of interacting with the contract's methods.
       this.setState({ web3, accounts, dai: instanceDai, fbstaker: instanceFBStaker }, this.runExample);
 
-      const daiBalance = await this.state.dai.methods.balanceOf(destinationAccount).call()
+      const daiBalance = await this.state.dai.methods.balanceOf(customerAccount).call()
       this.setState({ daiBalance })
+      this.getENSAggregator();
       this.updateStakedBalance();
       this.updateMoneyBalance();
-      this.getENSAggregator();
+
+      closeModal(initModal)
 
     } catch (error) {
       // Catch any errors for any of the above operations.
@@ -58,19 +72,8 @@ class App extends Component {
     }
   };
 
-  runExample = async () => {
-    const { accounts, contract } = this.state;
 
-    // Stores a given value, 5 by default.
-    //await contract.methods.set(5).send({ from: accounts[0] });
-
-    // Get the value from the contract to prove it worked.
-    // const response = await contract.methods.get().call();
-
-    // Update state with the result.
-    //this.setState({ storageValue: response });
-  };
-
+  // insert check Icon if value is true
   insertCheck = (value) => {
     if (value === false)
       return (<i className="fas fa-check-square" color="green"></i>)
@@ -78,45 +81,64 @@ class App extends Component {
   }
 
 
+  // For displaying customer dai balance
   updateDestBalance = async () => {
-    const daiBalance = await this.state.dai.methods.balanceOf(destinationAccount).call()
-    this.setState({ daiBalance })
+    const daiBalance = await this.state.dai.methods.balanceOf(customerAccount).call()
+    this.setState({
+      daiBalance
+    })
   }
+
+  //For displaying FBStaker Dai Balance
   updateStakedBalance = async () => {
     const stakedBalance = await this.state.dai.methods.balanceOf(this.state.fbstaker._address).call()
     this.setState({ stakedBalance })
-
   }
+  // For displaying the amount of FBMoney
   updateMoneyBalance = async () => {
     const moneyBalance = (new BN(await this.state.fbstaker.methods.getMoneyBalance().call({ from: this.state.fbstaker._address }))).toString()
     this.setState({ moneyBalance })
   }
 
+  // Adds 100 Dai to customer's account
   addDai = async () => {
-    await this.state.dai.methods.faucet(destinationAccount, new BN(100)).send({ from: destinationAccount })
+    openModal(this._operationModal)
+    await this.state.dai.methods.faucet(customerAccount, new BN(100)).send({ from: customerAccount })
     this.updateDestBalance();
+    closeModal(this._operationModal)
   }
 
+  // Stake 1 customer's dai - To be called by the customer
   stakeToken = async () => {
-    await this.state.dai.methods.approve(this.state.fbstaker._address, 10).send({ from: destinationAccount })
-    await this.state.fbstaker.methods.StakeTokens(this.state.dai._address, 10, this.state.aggregator).send({ from: destinationAccount })
+    openModal(this._operationModal)
+    await this.state.dai.methods.approve(this.state.fbstaker._address, 1).send({ from: customerAccount }) // Customer approves to take possession of dais
+    await this.state.fbstaker.methods.StakeTokens(this.state.dai._address, 1, this.state.aggregator).send({ from: customerAccount }) // Do the transfer
+
     this.updateDestBalance();
     this.updateStakedBalance();
     this.updateMoneyBalance();
+    closeModal(this._operationModal)
   }
 
+  // To be called by the owner of the Contract
   unstakeToken = async () => {
-    //await this.state.fbstaker.methods.UnstakeTokens(this.state.dai._address, 1, this.state.aggregator).send({ from: destinationAccount })
-    this.state.fbstaker.methods.UnstakeTokens(this.state.dai._address, 1, this.state.aggregator).call({ from: destinationAccount })
+    openModal(this._operationModal)
+    await this.state.dai.methods.approve(customerAccount, 1).send({ from: FrenchBorg }) // The owner of the contract allows withdrawal
+    await this.state.fbstaker.methods.UnstakeTokens(customerAccount, this.state.dai._address, 1, this.state.aggregator).send({ from: FrenchBorg }) // Transfer
+    await this.state.fbstaker.methods.retrieveBonus(customerAccount, this.state.dai._address, this.state.aggregator).send({ from: FrenchBorg })
     this.updateDestBalance();
     this.updateStakedBalance();
+    closeModal(this._operationModal)
   }
 
+  // Returns the aggregator for the Oracle
   getENSAggregator = async () => {
     let aggregator = await web3.eth.ens.getAddress('dai-eth.data.eth')
     this.setState({ aggregator })
   }
 
+
+  // evaluates the bonus - now
   evaluateBonus = async () => {
     let bonus = (new BN(await this.state.fbstaker.methods.evaluateBonus(this.state.dai._address, this.state.aggregator).call())).toString()
     this.setState({ bonus })
@@ -152,15 +174,15 @@ class App extends Component {
               </tr>
               <tr>
                 <td>{<p>{this.state.daiBalance}</p>}</td>
-                <td>Balance Dai Client</td>
+                <td>Balance Dai du client</td>
               </tr>
               <tr>
                 <td>{<p>{this.state.stakedBalance}</p>}</td>
-                <td>Balance Dai Staked</td>
+                <td>Balance Dai Staked du client</td>
               </tr>
               <tr>
                 <td>{<p>{this.state.moneyBalance}</p>}</td>
-                <td>Balance money</td>
+                <td>Balance de notre Token</td>
               </tr>
               <tr>
                 <td>{this.insertCheck(this.state.aggregator === 0)}</td>
@@ -179,15 +201,39 @@ class App extends Component {
         <button onClick={this.addDai}>ajoute 100 dai au client</button>
         <button onClick={this.stakeToken}>Stake 1 dai</button>
         <button onClick={this.evaluateBonus}>Evaluate Bonus</button>
+        <p>Changer de compte Metamask vers le compte Owner -></p>
         <button onClick={this.unstakeToken}>UnStake 1 dai</button>
-        <p>
-          If your contracts compiled and migrated successfully, below will show
-          a stored value of 5 (by default).
-        </p>
-        <p>
-          Try changing the value stored on <strong>line 42</strong> of App.js.
-        </p>
-        <div>The stored value is: {this.state.storageValue}</div>
+
+
+        <div className="modal fade" id="waitingOperation" tabIndex="-1">
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Transaction</h5>
+              </div>
+              <div className="modal-body">
+                <span className="spinner-border spinner-border-sm " role="status" />
+                <span> En attente d'execution de la demande </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="modal fade" id="initModal" tabIndex="-1">
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Connexion</h5>
+              </div>
+              <div className="modal-body">
+                <span className="spinner-border spinner-border-sm " role="status" />
+                <span> Veuillez vous connecter avec Metamask </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+
       </div>
     );
   }

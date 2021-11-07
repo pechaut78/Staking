@@ -21,8 +21,7 @@ module.exports = {
     testnet: {
       provider: new HDWalletProvider(MNEMONIC, API_URL),
       network_id: "*",
-      gas: 8000000,
-      gasPrice: 10000000000
+      gas: 8000000
     }
 
   },
