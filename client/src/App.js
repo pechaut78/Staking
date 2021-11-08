@@ -6,27 +6,27 @@ import getWeb3 from "./getWeb3";
 import "./App.css";
 import { web3 } from "@openzeppelin/test-helpers/src/setup";
 
+
 const BN = require('bn.js');
 
 
 const customerAccount = "0xFD7c7aa42EF7EFAf544B783549677b2fC20C3Ee9" // Customer
 const FrenchBorg = "0x696A27eccAFE7Ad2eBcD1E985521b7391390E224" // Owner of the contract
 
-function openModal(refer) {
-
-}
-function closeModal(refer) {
-
-}
-
 class App extends Component {
-  state = { storageValue: 0, web3: null, accounts: null, dai: null, fbstaker: null, daiBalance: 0, stakedBalance: 0, aggregator: 0, bonus: "", moneyBalance: "" };
+  state = { storageValue: 0, web3: null, accounts: null, dai: null, fbstaker: null, daiBalance: 0, stakedBalance: 0, aggregator: 0, bonus: "", moneyBalance: "", initializing: false, operationPending: false };
 
+
+  Initializing = (initializing) => {
+    this.setState({ initializing })
+  }
+  OperationPending = (operationPending) => {
+    this.setState({ operationPending })
+  }
 
   componentDidMount = async () => {
-    var initModal = document.getElementById('initModal')
-    this._operationModal = document.getElementById('waitingOperation')
-    openModal(initModal)
+
+    this.Initializing(true)
 
     try {
       // Get network provider and web3 instance.
@@ -61,7 +61,7 @@ class App extends Component {
       this.updateStakedBalance();
       this.updateMoneyBalance();
 
-      closeModal(initModal)
+
 
     } catch (error) {
       // Catch any errors for any of the above operations.
@@ -70,6 +70,7 @@ class App extends Component {
       );
       console.error(error);
     }
+    this.Initializing(false)
   };
 
 
@@ -102,33 +103,68 @@ class App extends Component {
 
   // Adds 100 Dai to customer's account
   addDai = async () => {
-    openModal(this._operationModal)
-    await this.state.dai.methods.faucet(customerAccount, new BN(100)).send({ from: customerAccount })
+
+    this.OperationPending(true)
+    try {
+      await this.state.dai.methods.faucet(customerAccount, new BN(100)).send({ from: customerAccount })
+    }
+    catch (err) {
+      alert("operation aborted")
+      this.OperationPending(false)
+    }
     this.updateDestBalance();
-    closeModal(this._operationModal)
+    this.OperationPending(false)
   }
 
   // Stake 1 customer's dai - To be called by the customer
   stakeToken = async () => {
-    openModal(this._operationModal)
-    await this.state.dai.methods.approve(this.state.fbstaker._address, 1).send({ from: customerAccount }) // Customer approves to take possession of dais
-    await this.state.fbstaker.methods.StakeTokens(this.state.dai._address, 1, this.state.aggregator).send({ from: customerAccount }) // Do the transfer
-
+    this.OperationPending(true)
+    try {
+      await this.state.dai.methods.approve(this.state.fbstaker._address, 1).send({ from: customerAccount }) // Customer approves to take possession of dais
+      await this.state.fbstaker.methods.StakeTokens(this.state.dai._address, 1, this.state.aggregator).send({ from: customerAccount }) // Do the transfer
+    }
+    catch (err) {
+      alert("operation aborted")
+      this.OperationPending(false)
+    }
     this.updateDestBalance();
     this.updateStakedBalance();
     this.updateMoneyBalance();
-    closeModal(this._operationModal)
+    this.OperationPending(false)
   }
 
   // To be called by the owner of the Contract
   unstakeToken = async () => {
-    openModal(this._operationModal)
-    await this.state.dai.methods.approve(customerAccount, 1).send({ from: FrenchBorg }) // The owner of the contract allows withdrawal
-    await this.state.fbstaker.methods.UnstakeTokens(customerAccount, this.state.dai._address, 1, this.state.aggregator).send({ from: FrenchBorg }) // Transfer
-    await this.state.fbstaker.methods.retrieveBonus(customerAccount, this.state.dai._address, this.state.aggregator).send({ from: FrenchBorg })
+    this.OperationPending(true)
+    try {
+      await this.state.dai.methods.approve(customerAccount, 1).send({ from: FrenchBorg }) // The owner of the contract allows withdrawal
+      await this.state.fbstaker.methods.UnstakeTokens(customerAccount, this.state.dai._address, 1, this.state.aggregator).send({ from: FrenchBorg }) // Transfer
+    }
+    catch (err) {
+      alert("operation aborted")
+      this.OperationPending(false)
+    }
+
     this.updateDestBalance();
     this.updateStakedBalance();
-    closeModal(this._operationModal)
+    this.OperationPending(false)
+  }
+
+  retrieveBonus = async () => {
+
+    this.OperationPending(true)
+    try {
+      // Do the Transfer
+      await this.state.fbstaker.methods.retrieveBonuses(customerAccount).send({ from: FrenchBorg })
+    }
+    catch (err) {
+      alert("operation aborted")
+      this.OperationPending(false)
+    }
+
+    this.updateDestBalance();
+    this.updateStakedBalance();
+    this.OperationPending(false)
   }
 
   // Returns the aggregator for the Oracle
@@ -137,13 +173,12 @@ class App extends Component {
     this.setState({ aggregator })
   }
 
-
-  // evaluates the bonus - now
-  evaluateBonus = async () => {
-    let bonus = (new BN(await this.state.fbstaker.methods.evaluateBonus(this.state.dai._address, this.state.aggregator).call())).toString()
-    this.setState({ bonus })
+  renderNavBarText = () => {
+    let txt = ""
+    if (this.state.initializing === true) txt = "Initialization..."
+    if (this.state.operationPending === true) txt = "Operation en cours..."
+    return txt
   }
-
   render() {
     if (!this.state.web3) {
       return <div>Loading Web3, accounts, and contract...</div>;
@@ -200,38 +235,15 @@ class App extends Component {
         <h2>Defi Staking</h2>
         <button onClick={this.addDai}>ajoute 100 dai au client</button>
         <button onClick={this.stakeToken}>Stake 1 dai</button>
-        <button onClick={this.evaluateBonus}>Evaluate Bonus</button>
-        <p>Changer de compte Metamask vers le compte Owner -></p>
+        <p>Changer de compte Metamask vers le compte Owner =></p>
         <button onClick={this.unstakeToken}>UnStake 1 dai</button>
+        <button onClick={this.retrieveBonus}>Transfer Bonus</button>
 
-
-        <div className="modal fade" id="waitingOperation" tabIndex="-1">
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Transaction</h5>
-              </div>
-              <div className="modal-body">
-                <span className="spinner-border spinner-border-sm " role="status" />
-                <span> En attente d'execution de la demande </span>
-              </div>
-            </div>
+        <nav className="navbar fixed-bottom navbar-dark bg-dark">
+          <div className="container-fluid">
+            <p className="navbar-tex active" >{this.renderNavBarText()}</p>
           </div>
-        </div>
-
-        <div className="modal fade" id="initModal" tabIndex="-1">
-          <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Connexion</h5>
-              </div>
-              <div className="modal-body">
-                <span className="spinner-border spinner-border-sm " role="status" />
-                <span> Veuillez vous connecter avec Metamask </span>
-              </div>
-            </div>
-          </div>
-        </div>
+        </nav>
 
 
       </div>
