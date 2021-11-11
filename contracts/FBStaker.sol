@@ -17,6 +17,7 @@ struct Bonus {
 
 contract FBStaker {
 	uint256 _Rate = 1;
+	address _Owner;
 	mapping(address => mapping(address => Stake)) stakeList; // Liste des stakes en cours
 	mapping(address => Bonus) bonusList; // List des bonus par utilisateur
 	mapping(address => uint256) tokenPool; // List des tokens récupérés
@@ -32,6 +33,10 @@ contract FBStaker {
 		require(v != address(0));
 		_;
 	}
+	modifier isOwner(address adr) {
+		require(adr == _Owner);
+		_;
+	}
 
 	event TokenStaked(address adr, IERC20 Tkn, uint256 amount);
 	event TokenUnstaked(address adr, IERC20 Tkn, uint256 amount);
@@ -41,6 +46,7 @@ contract FBStaker {
 	constructor() {
 		_FrenchBorgTokenProvider = IERC20(new FBMoney(1000)); // Our home-made money
 		_Decimals = 18;
+		_Owner = msg.sender;
 	}
 
 	/**
@@ -135,13 +141,14 @@ contract FBStaker {
 	}
 
 	/**
-	 * @dev Customer retrieves all his acquired bonuses - to be called by the owner of the contract
+	 * @dev send all acquired bonuses to a customer- to be called by the owner of the contract
 	 * @param customer customer who wants to get the FBMoney back
 	 */
-	function retrieveBonuses(address customer)
+	function dispatchBonuses(address customer)
 		external
 		notNullAddress(customer)
 	{
+		// We only dispatch bonuses already acquired, we do not update the amount
 		uint256 bonus = bonusList[customer].amount;
 
 		// Transfer Bonuses to customer
@@ -169,7 +176,7 @@ contract FBStaker {
 		notNullAddress(Aggregator)
 	{
 		// Trouve la reference du client
-		Stake memory Stk = stakeList[msg.sender][address(Token)];
+		Stake storage Stk = stakeList[msg.sender][address(Token)];
 
 		// Compute and transfer Bonus
 		//Le stake n'est peut etre pas vide, aussi on doit d'abord mettre a jour les bonuses
@@ -177,14 +184,13 @@ contract FBStaker {
 		// Met à jour maintenant, apres avoir aggrégé, la balance de tokens
 		Stk.amount += amount;
 		Stk.dateOfValue = block.number;
-		stakeList[msg.sender][address(Token)] = Stk;
 		emit TokenStaked(msg.sender, Token, amount);
 		// Transfer the tokens, supposing the approve has been done
 		Token.transferFrom(msg.sender, address(this), amount);
 	}
 
 	/**
-	 * @dev Unstake the staked tokens - To be called by the owner of the contract
+	 * @dev Unstake the staked tokens
 	 * @param Customer Customer's address
 	 * @param Token customer's Token
 	 * @param amount amount of customer's token to Stake
@@ -203,7 +209,7 @@ contract FBStaker {
 		notNullAddress(Aggregator)
 	{
 		// Trouve la reference du client
-		Stake memory Stk = stakeList[Customer][address(Token)];
+		Stake storage Stk = stakeList[Customer][address(Token)];
 		// On essai de retirer de trop ?
 		require(Stk.amount >= amount, "amount too high");
 		// Compute and aggregate Bonus if required
@@ -211,7 +217,6 @@ contract FBStaker {
 
 		Stk.amount -= amount;
 		Stk.dateOfValue = block.number;
-		stakeList[Customer][address(Token)] = Stk;
 		emit TokenUnstaked(Customer, Token, amount);
 
 		Token.transfer(Customer, amount);
@@ -233,13 +238,14 @@ contract FBStaker {
 		notNullAddress(address(Token))
 		notNullAddress(Aggregator)
 	{
+		// Must be called by the owner of the contract to distribute the bonuses
+		require(msg.sender == _Owner);
 		// Trouve la reference du client
-		Stake memory Stk = stakeList[Customer][address(Token)];
+		Stake storage Stk = stakeList[Customer][address(Token)];
 		// Compute and aggregate Bonus if necessary
 		if (Stk.amount > 0) {
 			aggregateBonus(Customer, Aggregator, Stk);
 			Stk.dateOfValue = block.number;
-			stakeList[Customer][address(Token)] = Stk;
 		}
 		emit BonusRound(Customer, Token);
 	}

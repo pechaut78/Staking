@@ -5,13 +5,13 @@ import FBStaker from "./contracts/FBStaker.json";
 import getWeb3 from "./getWeb3";
 import "./App.css";
 import { web3 } from "@openzeppelin/test-helpers/src/setup";
-
-
+import { FrenchBorg, customerAccount } from "./myaddresses"
 const BN = require('bn.js');
 
 
-const customerAccount = "0xFD7c7aa42EF7EFAf544B783549677b2fC20C3Ee9" // Customer
-const FrenchBorg = "0x696A27eccAFE7Ad2eBcD1E985521b7391390E224" // Owner of the contract
+
+
+
 
 class App extends Component {
   state = { storageValue: 0, web3: null, accounts: null, dai: null, fbstaker: null, daiBalance: 0, stakedBalance: 0, aggregator: 0, bonus: "", moneyBalance: "", initializing: false, operationPending: false };
@@ -126,6 +126,7 @@ class App extends Component {
     catch (err) {
       alert("operation aborted")
       this.OperationPending(false)
+
     }
     this.updateDestBalance();
     this.updateStakedBalance();
@@ -137,8 +138,7 @@ class App extends Component {
   unstakeToken = async () => {
     this.OperationPending(true)
     try {
-      await this.state.dai.methods.approve(customerAccount, 1).send({ from: FrenchBorg }) // The owner of the contract allows withdrawal
-      await this.state.fbstaker.methods.UnstakeTokens(customerAccount, this.state.dai._address, 1, this.state.aggregator).send({ from: FrenchBorg }) // Transfer
+      await this.state.fbstaker.methods.UnstakeTokens(customerAccount, this.state.dai._address, 1, this.state.aggregator).send({ from: customerAccount }) // Transfer
     }
     catch (err) {
       alert("operation aborted")
@@ -235,9 +235,7 @@ class App extends Component {
         <h2>Defi Staking</h2>
         <button onClick={this.addDai}>ajoute 100 dai au client</button>
         <button onClick={this.stakeToken}>Stake 1 dai</button>
-        <p>Changer de compte Metamask vers le compte Owner =></p>
         <button onClick={this.unstakeToken}>UnStake 1 dai</button>
-        <button onClick={this.retrieveBonus}>Transfer Bonus</button>
 
         <nav className="navbar fixed-bottom navbar-dark bg-dark">
           <div className="container-fluid">
