@@ -173,8 +173,13 @@ class App extends Component {
 
   // Returns the aggregator for the Oracle
   getENSAggregator = async () => {
-    let aggregator = await web3.eth.ens.getAddress('dai-eth.data.eth')
-    this.setState({ aggregator })
+    try {
+      let aggregator = await web3.eth.ens.getAddress('dai-eth.data.eth')
+      this.setState({ aggregator })
+    }
+    catch (err) {
+      alert("ENS: " + err.toString())
+    }
   }
 
   renderNavBarText = () => {
