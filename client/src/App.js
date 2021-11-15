@@ -84,21 +84,25 @@ class App extends Component {
 
   // For displaying customer dai balance
   updateDestBalance = async () => {
-    const daiBalance = await this.state.dai.methods.balanceOf(customerAccount).call()
-    this.setState({
-      daiBalance
-    })
+    try {
+      const daiBalance = await this.state.dai.methods.balanceOf(customerAccount).call()
+      this.setState({ daiBalance })
+    } catch (err) { console.log(err) }
   }
 
   //For displaying FBStaker Dai Balance
   updateStakedBalance = async () => {
-    const stakedBalance = await this.state.dai.methods.balanceOf(this.state.fbstaker._address).call()
-    this.setState({ stakedBalance })
+    try {
+      const stakedBalance = await this.state.dai.methods.balanceOf(this.state.fbstaker._address).call()
+      this.setState({ stakedBalance })
+    } catch (err) { console.log(err) }
   }
   // For displaying the amount of FBMoney
   updateMoneyBalance = async () => {
-    const moneyBalance = (new BN(await this.state.fbstaker.methods.getMoneyBalance().call({ from: this.state.fbstaker._address }))).toString()
-    this.setState({ moneyBalance })
+    try {
+      const moneyBalance = (new BN(await this.state.fbstaker.methods.getMoneyBalance().call({ from: this.state.fbstaker._address }))).toString()
+      this.setState({ moneyBalance })
+    } catch (err) { console.log(err) }
   }
 
   // Adds 100 Dai to customer's account
